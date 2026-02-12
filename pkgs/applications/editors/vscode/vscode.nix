@@ -117,6 +117,7 @@ buildVscode {
       johnrtitor
       jefflabonte
       wetrustinprize
+      HarisDotParis
     ];
     platforms = [
       "x86_64-linux"
