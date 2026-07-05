@@ -25,6 +25,13 @@ let
 
   generatedSecretKeyFile = "${cfg.dataDir}/secret-key";
   secretKeyFile = if cfg.secretKeyFile == null then generatedSecretKeyFile else cfg.secretKeyFile;
+
+  servicePath = lib.concatStringsSep ":" (
+    [ "/run/wrappers/bin" ]
+    ++
+      lib.optional (cfg.path != [ ])
+        "${lib.makeBinPath cfg.path}:${lib.makeSearchPathOutput "bin" "sbin" cfg.path}"
+  );
 in
 {
   meta.maintainers = with lib.maintainers; [ telometto ];
@@ -189,7 +196,9 @@ in
         ]
       '';
       description = ''
-        Packages added to the WebZFS service `PATH`.
+        Packages added to the WebZFS service `PATH`. `/run/wrappers/bin` is
+        inserted before these package paths so wrapped privileged helpers are
+        found first.
       '';
     };
   };
@@ -221,7 +230,9 @@ in
       after = [ "network.target" ];
 
       inherit (cfg) path;
-      environment = serviceEnvironment;
+      environment = serviceEnvironment // {
+        PATH = lib.mkForce servicePath;
+      };
 
       preStart = lib.optionalString (cfg.secretKeyFile == null) ''
         if [ ! -s ${lib.escapeShellArg generatedSecretKeyFile} ]; then
