@@ -1852,6 +1852,7 @@ in
   watchdogd = runTest ./watchdogd.nix;
   webhook = runTest ./webhook.nix;
   weblate = runTest ./web-apps/weblate.nix;
+  webzfs = runTest ./webzfs.nix;
   wg-access-server = runTest ./wg-access-server.nix;
   whisparr = runTest ./whisparr.nix;
   whoami = runTest ./whoami.nix;
