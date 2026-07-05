@@ -38,6 +38,10 @@ buildNpmPackage (finalAttrs: {
 
   npmDepsHash = "sha256-27+8x4AbHayepOex/g/fhn/9DzkWPOqIATYyWszgdh4=";
 
+  patches = [
+    ./template-response-compat.patch
+  ];
+
   npmBuildScript = "build:css";
 
   nativeBuildInputs = [
