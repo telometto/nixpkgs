@@ -3,6 +3,7 @@
   stdenv,
   fetchurl,
   fetchFromGitLab,
+  callPackage,
   buildPackages,
   pkg-config,
   texinfo,
@@ -31,6 +32,7 @@
   withTpm2Tss ? !stdenv.hostPlatform.isDarwin && !enableMinimal,
   tpm2-tss,
   nixosTests,
+  python3Packages,
 }:
 
 assert guiSupport -> !enableMinimal;
@@ -113,6 +115,8 @@ stdenv.mkDerivation (finalAttrs: {
     [
       # Without this, scdaemon isn't linked to libusb, causing smartcards to not work correctly
       ./fix-libusb-include-path.patch
+      # Preserve existing output permissions through partial-file replacement.
+      ./25-patches/preserve-output-permissions.patch
       # Use pkg-config to find tss2-esys to fix static building
       # Submitted upstream: https://dev.gnupg.org/D606
       # The diff is larger than upstream because configure.ac was modified,
@@ -227,7 +231,13 @@ stdenv.mkDerivation (finalAttrs: {
   ];
   doCheck = !enableMinimal;
 
-  passthru.tests = nixosTests.gnupg;
+  passthru.tests = {
+    nixos = nixosTests.gnupg;
+    output-permissions = callPackage ./25-tests.nix {
+      gnupg = finalAttrs.finalPackage;
+    };
+    python-gnupg = python3Packages.python-gnupg;
+  };
 
   __structuredAttrs = true;
 
