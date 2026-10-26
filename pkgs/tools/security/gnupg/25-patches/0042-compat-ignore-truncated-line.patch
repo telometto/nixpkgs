@@ -1,0 +1,53 @@
+From 53632ff9df50a0cb64957a8835c4a7cabc61a6f5 Mon Sep 17 00:00:00 2001
+From: NIIBE Yutaka <gniibe@fsij.org>
+Date: Tue, 6 Jan 2026 18:56:40 +0000
+Subject: compat ignore truncated line
+
+
+Rebased from FreePG source-2.5.21-freepg for GnuPG 2.5.24. Use a distinct compatibility flag bit for truncated lines.
+---
+diff --git a/g10/armor.c b/g10/armor.c
+--- a/g10/armor.c
++++ b/g10/armor.c
+@@ -1585,11 +1585,16 @@
+         /* Note that in a cleartext signature truncated lines in the
+          * plaintext are detected and propagated to the signature
+          * checking code by inserting a \f into the plaintext.  We do
+-         * not use log_info here because some of the truncated lines
+-         * are harmless.  */
+-	if( afx->truncated )
+-	    log_info(_("invalid armor: line longer than %d characters\n"),
+-		      MAX_LINELEN );
++         * not use log_error here because some of the truncated lines
++         * are harmless, in compatibility mode.  */
++        if( afx->truncated ) {
++            if((opt.compat_flags & COMPAT_IGNORE_TRUNCATED_LINE))
++                log_info(_("invalid armor: line longer than %d characters\n"),
++                         MAX_LINELEN );
++            else
++                log_error(_("invalid armor: line longer than %d characters\n"),
++                          MAX_LINELEN );
++        }
+ 	/* issue an error to enforce dissemination of correct software */
+ 	if( afx->qp_detected )
+ 	    log_error(_("quoted printable character in armor - "
+diff --git a/g10/gpg.c b/g10/gpg.c
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -1077,6 +1077,7 @@
+     { COMPAT_NO_MANU,      "no-manu" },
+     { COMPAT_SUGGEST_EMBEDDED_NAME, "suggest-embedded-name" },
+     { COMPAT_ALLOW_NOT_DASH_ESCAPED, "allow-not-dash-escaped" },
++    { COMPAT_IGNORE_TRUNCATED_LINE, "ignore-truncated-line" },
+     { COMPAT_NO_PARTIALFILEGUARD, "no-partial-file-guard" },
+     { 0, NULL }
+   };
+diff --git a/g10/options.h b/g10/options.h
+--- a/g10/options.h
++++ b/g10/options.h
+@@ -411,6 +411,7 @@
+                                          * embedded filename as
+                                          * suggestion.  */
+ #define COMPAT_ALLOW_NOT_DASH_ESCAPED 32 /* Handle NotDashEscaped header.  */
++#define COMPAT_IGNORE_TRUNCATED_LINE 128 /* Ignore truncated line.  */
+ #define COMPAT_NO_PARTIALFILEGUARD    64 /* Don't use PartialFileGuard.  */
