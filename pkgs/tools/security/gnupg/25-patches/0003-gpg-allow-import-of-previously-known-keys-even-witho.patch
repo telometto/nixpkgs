@@ -1,0 +1,108 @@
+From b987d2750496f481baa7c2e557427af05e27eded Mon Sep 17 00:00:00 2001
+From: Vincent Breitmoser <look@my.amazin.horse>
+Date: Thu, 13 Jun 2019 21:27:42 +0200
+Subject: gpg: allow import of previously known keys, even without UIDs
+
+* g10/import.c (import_one): Accept an incoming OpenPGP certificate that
+has no user id, as long as we already have a local variant of the cert
+that matches the primary key.
+
+--
+
+This fixes two of the three broken tests in import-incomplete.scm.
+
+GnuPG-Bug-id: 4393
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+
+Rebased from FreePG source-2.5.21-freepg for GnuPG 2.5.24. Preserve the upstream debug-accept-no-uid import option.
+---
+diff --git a/g10/import.c b/g10/import.c
+--- a/g10/import.c
++++ b/g10/import.c
+@@ -2010,7 +2010,6 @@
+   int non_self_or_utk = 0;
+   char pkstrbuf[PUBKEY_STRING_SIZE];
+   int merge_keys_done = 0;
+-  int any_filter = 0;
+   KEYDB_HANDLE hd = NULL;
+ 
+   if (r_valid)
+@@ -2047,14 +2046,6 @@
+       log_printf ("\n");
+     }
+ 
+-
+-  if (!uidnode)
+-    {
+-      if (!silent)
+-        log_error( _("key %s: no user ID\n"), keystr_from_pk(pk));
+-      if (!(options & IMPORT_DEBUG_ACCEPT_NO_UID))
+-        return 0;
+-    }
+ 
+   if (screener && screener (keyblock, screener_arg))
+     {
+@@ -2149,19 +2140,9 @@
+ 	  }
+     }
+ 
+-  /* Delete invalid parts and bail out if there are no user ids left.  */
+-  if (!delete_inv_parts (ctrl, keyblock, keyid, options, otherrevsigs))
+-    {
+-      if (!silent)
+-        {
+-          log_error ( _("key %s: no valid user IDs\n"), keystr_from_pk(pk));
+-          if (!opt.quiet)
+-            log_info(_("this may be caused by a missing self-signature\n"));
+-        }
+-      stats->no_user_id++;
+-      if (!(options & IMPORT_DEBUG_ACCEPT_NO_UID))
+-        return 0;
+-    }
++  /* Delete invalid parts.  Reject new keys without valid UIDs below,
++   * while allowing updates to previously imported keys.  */
++  delete_inv_parts (ctrl, keyblock, keyid, options, otherrevsigs);
+ 
+   /* Get rid of deleted nodes.  */
+   commit_kbnode (&keyblock);
+@@ -2171,25 +2152,11 @@
+     {
+       apply_keep_uid_filter (ctrl, keyblock, import_filter.keep_uid);
+       commit_kbnode (&keyblock);
+-      any_filter = 1;
+     }
+   if (import_filter.drop_sig)
+     {
+       apply_drop_sig_filter (ctrl, keyblock, import_filter.drop_sig);
+       commit_kbnode (&keyblock);
+-      any_filter = 1;
+-    }
+-
+-  /* If we ran any filter we need to check that at least one user id
+-   * is left in the keyring.  Note that we do not use log_error in
+-   * this case. */
+-  if (any_filter && !any_uid_left (keyblock))
+-    {
+-      if (!opt.quiet )
+-        log_info ( _("key %s: no valid user IDs\n"), keystr_from_pk (pk));
+-      stats->no_user_id++;
+-      if (!(options & IMPORT_DEBUG_ACCEPT_NO_UID))
+-        return 0;
+     }
+ 
+   /* The keyblock is valid and ready for real import.  */
+@@ -2250,6 +2217,14 @@
+         log_info( _("key %s: new key - skipped\n"), keystr(keyid));
+       err = 0;
+       stats->skipped_new_keys++;
++    }
++  else if (err && !any_uid_left (keyblock)
++           && !(options & IMPORT_DEBUG_ACCEPT_NO_UID))
++    {
++      if (!silent)
++        log_info( _("key %s: new key but contains no user ID - skipped\n"), keystr(keyid));
++      err = 0;
++      stats->no_user_id++;
+     }
+   else if (err)  /* Insert this key. */
+     {
