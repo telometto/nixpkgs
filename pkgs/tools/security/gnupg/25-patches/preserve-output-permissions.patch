@@ -1,0 +1,77 @@
+Preserve the destination mode when GnuPG's partial-file guard replaces it.
+
+GnuPG 2.5.21 introduced a temporary output file for decryption. Its rename
+replaces an existing output file's permissions with those of the temporary
+file. This breaks python-gnupg's file permission test and can broaden access
+to decrypted output. Copy the existing regular file's permission bits to the
+opened partial file before writing plaintext, retaining authentication failure
+cleanup and atomic replacement.
+
+---
+diff --git a/g10/plaintext.c b/g10/plaintext.c
+--- a/g10/plaintext.c
++++ b/g10/plaintext.c
+@@ -24,6 +24,10 @@
+ #include <string.h>
+ #include <errno.h>
+ #include <sys/types.h>
++#ifndef HAVE_DOSISH_SYSTEM
++# include <sys/stat.h>
++# include <unistd.h>
++#endif
+ #ifdef HAVE_DOSISH_SYSTEM
+ # include <fcntl.h> /* for setmode() */
+ #endif
+@@ -159,6 +163,10 @@
+   else
+     {
+       char *filename;
++#ifndef HAVE_DOSISH_SYSTEM
++      struct stat statbuf;
++      int preserve_mode = 0;
++#endif
+ 
+       if ((opt.compat_flags & COMPAT_NO_PARTIALFILEGUARD)
+           /* Don't enable the partial file guard if it's already prepared.  */
+@@ -177,6 +185,23 @@
+           fname_part = filename;
+         }
+ 
++#ifndef HAVE_DOSISH_SYSTEM
++      /* Renaming the partial file replaces the original inode.  Preserve
++       * an existing regular output file's permissions before writing any
++       * plaintext, rather than replacing them with the current umask.  */
++      if (fname_part)
++        {
++          if (!gnupg_stat (fname, &statbuf))
++            preserve_mode = S_ISREG (statbuf.st_mode);
++          else if (errno != ENOENT)
++            {
++              err = gpg_error_from_syserror ();
++              log_error (_("can't stat '%s': %s\n"), fname, gpg_strerror (err));
++              goto leave;
++            }
++        }
++#endif
++
+       if (!(fp = es_fopen (filename, "wb")))
+         {
+           err = gpg_error_from_syserror ();
+@@ -184,6 +209,18 @@
+                      gpg_strerror (err));
+           goto leave;
+         }
++#ifndef HAVE_DOSISH_SYSTEM
++      if (preserve_mode && fchmod (es_fileno (fp), statbuf.st_mode & 0777))
++        {
++          err = gpg_error_from_syserror ();
++          log_error (_("error setting permissions of '%s': %s\n"),
++                     filename, gpg_strerror (err));
++          es_fclose (fp);
++          fp = NULL;
++          gnupg_remove (fname_part);
++          goto leave;
++        }
++#endif
+       using_file = 1;
+     }
